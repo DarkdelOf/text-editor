@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "include/raylib.h"
 
 typedef struct Block {
     int id;
