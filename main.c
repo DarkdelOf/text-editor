@@ -88,7 +88,7 @@ void append_char(Block *b, char c) {
     b->text[len + 1] = '\0';
 }
 
-void atualizar_texto_digitado(Block *b) {
+void writing_refresh(Block *b) {
 // write
     int key = GetCharPressed();
     while (key > 0) {
@@ -145,7 +145,7 @@ int main() {
     while (!WindowShouldClose()) {
         
         if (block_focus != NULL) {
-            atualizar_texto_digitado(block_focus);
+            writing_refresh(block_focus);
 
             if (IsKeyPressed(KEY_ENTER) && !IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT)) {
                 add_block(my_doc, "");     // cria um bloco novo
