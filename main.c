@@ -39,7 +39,6 @@ Block* create_block(int id, char *text_content) {
 void add_block(Document *doc, char *text) {
     doc->id_counter++;
     Block *new_b = create_block(doc->id_counter, text);
-    
     if (doc->start == NULL) {
         doc->start = new_b;
         doc->end = new_b;
@@ -63,8 +62,9 @@ void free_document(Document *doc) {
 // typing logic
 void update_typing(Block *b) {
     double now = GetTime();
+    int maxWidth = 680;
 
-    // horizontal move
+    // horizontal move timers
     static double next_horiz_time = 0; 
     bool move_l = false, move_r = false;
 
@@ -77,7 +77,7 @@ void update_typing(Block *b) {
     if (move_r && b->cursor_index < (int)strlen(b->text)) b->cursor_index++;
     if (move_l && b->cursor_index > 0) b->cursor_index--;
 
-    // write
+    // character insertion
     int key = GetCharPressed();
     while (key > 0) {
         if ((key >= 32) && (key <= 125)) {
@@ -90,7 +90,7 @@ void update_typing(Block *b) {
         key = GetCharPressed();
     }
 
-    // line break (shift + enter)
+    // line break
     if (IsKeyPressed(KEY_ENTER) && (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))) {
         int len = strlen(b->text);
         b->text = (char*) realloc(b->text, len + 2);
@@ -119,7 +119,7 @@ void update_typing(Block *b) {
         memmove(&b->text[b->cursor_index], &b->text[b->cursor_index + 1], len - b->cursor_index);
     }
 
-    // vertical move
+    // vertical navigation
     static double next_vert_time = 0;
     int dir = 0; bool proc_y = false;
 
@@ -130,27 +130,27 @@ void update_typing(Block *b) {
     else if (IsKeyDown(KEY_DOWN) && now > next_vert_time) { dir = 1; proc_y = true; next_vert_time = now + 0.05; }
 
     if (proc_y) {
-        int cur_line = 0; float cur_x = 0;
+        int cursor_line = 0; float cursor_x = 0;
         for (int i = 0; i < b->cursor_index; i++) {
             float w = MeasureTextEx(GetFontDefault(), (char[2]){b->text[i], '\0'}, 20, 1.0f).x;
-            if (b->text[i] == '\n' || cur_x + w > 685) { cur_line++; cur_x = 0; if (b->text[i] == '\n') continue; }
-            cur_x += w + 1.0f;
+            if (b->text[i] == '\n' || cursor_x + w > maxWidth) { cursor_line++; cursor_x = 0; if (b->text[i] == '\n') continue; }
+            cursor_x += w + 1.0f;
         }
-        int target = cur_line + dir;
-        if (target >= 0) {
-            int best_i = b->cursor_index; float min_d = 9999.0f;
+        int target_line = cursor_line + dir;
+        if (target_line >= 0) {
+            int best_index = b->cursor_index; float min_dist = 9999.0f;
             int scan_line = 0; float scan_x = 0;
             for (int i = 0; i <= (int)strlen(b->text); i++) {
-                if (scan_line == target) {
-                    float d = (cur_x > scan_x) ? (cur_x - scan_x) : (scan_x - cur_x);
-                    if (d < min_d) { min_d = d; best_i = i; }
+                if (scan_line == target_line) {
+                    float dist = (cursor_x > scan_x) ? (cursor_x - scan_x) : (scan_x - cursor_x);
+                    if (dist < min_dist) { min_dist = dist; best_index = i; }
                 }
                 if (b->text[i] == '\0') break;
                 float w = MeasureTextEx(GetFontDefault(), (char[2]){b->text[i], '\0'}, 20, 1.0f).x;
-                if (b->text[i] == '\n' || scan_x + w > 685) { scan_line++; scan_x = 0; if (b->text[i] == '\n') continue; }
+                if (b->text[i] == '\n' || scan_x + w > maxWidth) { scan_line++; scan_x = 0; if (b->text[i] == '\n') continue; }
                 scan_x += w + 1.0f;
             }
-            b->cursor_index = best_i;
+            b->cursor_index = best_index;
         }
     }
 }
@@ -167,14 +167,12 @@ int main() {
     while (!WindowShouldClose()) {
         if (block_focus != NULL) {
             update_typing(block_focus);
-
             if (IsKeyPressed(KEY_ENTER) && !IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT)) {
                 add_block(my_doc, ""); 
                 block_focus = my_doc->end;
             }
         }
 
-        // drawing
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
@@ -183,52 +181,65 @@ int main() {
         int fontSize = 20, lineHeight = 24, maxWidth = 680; 
 
         while (current != NULL) {
-            // layout
-            int vis_lines = 1; float x_c = 0;
+            int pad = 4;
+            int gap = 2;
+
+            // 1. calculate block height
+            int vis_lines = 1; float x_count = 0;
             for (int i = 0; current->text[i] != '\0'; i++) {
                 float w = MeasureTextEx(GetFontDefault(), (char[2]){current->text[i], '\0'}, (float)fontSize, 1.0f).x;
-                if (current->text[i] == '\n' || x_c + w > maxWidth) { vis_lines++; x_c = 0; if (current->text[i] == '\n') continue; }
-                x_c += w + 1.0f; 
+                if (current->text[i] == '\n' || x_count + w > maxWidth) { vis_lines++; x_count = 0; if (current->text[i] == '\n') continue; }
+                x_count += w + 1.0f; 
             }
 
-            int b_height = (vis_lines * lineHeight) + 20;
+            int b_height = (vis_lines * lineHeight) + (pad * 2);
             Rectangle b_area = {50, (float)y, 700, (float)b_height};
             bool mouse_above = CheckCollisionPointRec(GetMousePosition(), b_area);
 
-            // hover
+            // 2. interaction and hover
             if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && mouse_above) block_focus = current;
             if (mouse_above) DrawRectangleRec(b_area, (Color){ 235, 235, 235, 255 }); 
 
-            // text and cursor
-            int c_line = 0; float x_off = 0;
-            Vector2 cur_pos = { 60, (float)y + 10 };
+            // 3. render text and cursor position
+            int current_line = 0; float x_offset = 0;
+            Vector2 cur_pos = { 60, (float)y + pad };
             
             for (int i = 0; current->text[i] != '\0'; i++) {
-                if (i == current->cursor_index) cur_pos = (Vector2){ (float)((int)(60 + x_off)), (float)((int)(y + 10 + (c_line * lineHeight))) };
+                // set cursor pos if match
+                if (i == current->cursor_index) {
+                    cur_pos = (Vector2){ (float)((int)(60 + x_offset)), (float)((int)(y + pad + (current_line * lineHeight))) };
+                }
+
                 char c = current->text[i];
                 float w = MeasureTextEx(GetFontDefault(), (char[2]){c, '\0'}, (float)fontSize, 1.0f).x;
 
-                if (c == '\n' || x_off + w > maxWidth) {
-                    c_line++; x_off = 0;
+                // wrap logic
+                if (c == '\n' || x_offset + w > maxWidth) {
+                    current_line++; x_offset = 0;
                     if (c == '\n') {
-                        if (i + 1 == current->cursor_index) cur_pos = (Vector2){ 60, (float)((int)(y + 10 + (c_line * lineHeight))) };
+                        if (i + 1 == current->cursor_index) cur_pos = (Vector2){ 60, (float)((int)(y + pad + (current_line * lineHeight))) };
                         continue; 
                     }
                 }
 
-                Vector2 pos = { (float)((int)(60 + x_off)), (float)((int)(y + 10 + (c_line * lineHeight))) };
+                // draw char
+                Vector2 pos = { (float)((int)(60 + x_offset)), (float)((int)(y + pad + (current_line * lineHeight))) };
                 DrawTextEx(GetFontDefault(), (char[2]){c, '\0'}, pos, (float)fontSize, 1.0f, BLACK);
-                x_off += w + 1.0f;
+                x_offset += w + 1.0f;
 
-                if (i + 1 == current->cursor_index) cur_pos = (Vector2){ (float)((int)(60 + x_off)), (float)((int)(y + 10 + (c_line * lineHeight))) };
+                // handle cursor at the very end
+                if (i + 1 == current->cursor_index) {
+                    cur_pos = (Vector2){ (float)((int)(60 + x_offset)), (float)((int)(y + pad + (current_line * lineHeight))) };
+                }
             }
 
-            // blink cursor
+            // 4. draw blinking cursor
             if (current == block_focus && (int)(GetTime() * 2) % 2 == 0) {
                 DrawRectangle((int)cur_pos.x, (int)cur_pos.y, 2, fontSize, BLACK);
             }
 
-            y += b_height + 10;
+            // 5. next block jump
+            y += b_height + gap;
             current = current->next;
         }
         EndDrawing();
