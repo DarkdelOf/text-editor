@@ -3,8 +3,7 @@
 #include <string.h>
 #include "include/raylib.h"
 
-// --- ESTRUTURAS DE DADOS ---
-
+// data structures
 typedef struct Block {
     int id;
     char *text;
@@ -18,8 +17,7 @@ typedef struct {
     int id_counter;
 } Document;
 
-// --- GERENCIAMENTO DE MEMÓRIA ---
-
+// memory management
 Document* create_document() {
     Document *doc = (Document*) malloc(sizeof(Document));
     if (doc == NULL) return NULL;
@@ -62,12 +60,11 @@ void free_document(Document *doc) {
     free(doc);
 }
 
-// --- LÓGICA DE INPUT (TECLADO) ---
-
-void atualizar_texto_digitado(Block *b) {
+// typing logic
+void update_typing(Block *b) {
     double now = GetTime();
 
-    // 1. MOVIMENTAÇÃO HORIZONTAL (Acelerada)
+    // horizontal move
     static double next_horiz_time = 0; 
     bool move_l = false, move_r = false;
 
@@ -80,7 +77,7 @@ void atualizar_texto_digitado(Block *b) {
     if (move_r && b->cursor_index < (int)strlen(b->text)) b->cursor_index++;
     if (move_l && b->cursor_index > 0) b->cursor_index--;
 
-    // 2. ESCRITA E INSERÇÃO
+    // write
     int key = GetCharPressed();
     while (key > 0) {
         if ((key >= 32) && (key <= 125)) {
@@ -93,7 +90,7 @@ void atualizar_texto_digitado(Block *b) {
         key = GetCharPressed();
     }
 
-    // 3. QUEBRA DE LINHA (Shift + Enter)
+    // line break (shift + enter)
     if (IsKeyPressed(KEY_ENTER) && (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))) {
         int len = strlen(b->text);
         b->text = (char*) realloc(b->text, len + 2);
@@ -102,7 +99,7 @@ void atualizar_texto_digitado(Block *b) {
         b->cursor_index++;
     }
 
-    // 4. BACKSPACE E DELETE (Acelerados)
+    // backspace and delete
     static double next_del_time = 0;
     bool do_back = false, do_del = false;
 
@@ -122,10 +119,9 @@ void atualizar_texto_digitado(Block *b) {
         memmove(&b->text[b->cursor_index], &b->text[b->cursor_index + 1], len - b->cursor_index);
     }
 
-    // 5. MOVIMENTAÇÃO VERTICAL (Inteligente/Acelerada)
+    // vertical move
     static double next_vert_time = 0;
-    int dir = 0;
-    bool proc_y = false;
+    int dir = 0; bool proc_y = false;
 
     if (IsKeyPressed(KEY_UP)) { dir = -1; proc_y = true; next_vert_time = now + 0.4; }
     else if (IsKeyDown(KEY_UP) && now > next_vert_time) { dir = -1; proc_y = true; next_vert_time = now + 0.05; }
@@ -134,47 +130,43 @@ void atualizar_texto_digitado(Block *b) {
     else if (IsKeyDown(KEY_DOWN) && now > next_vert_time) { dir = 1; proc_y = true; next_vert_time = now + 0.05; }
 
     if (proc_y) {
-        int linha_at = 0; float x_at = 0;
+        int cur_line = 0; float cur_x = 0;
         for (int i = 0; i < b->cursor_index; i++) {
             float w = MeasureTextEx(GetFontDefault(), (char[2]){b->text[i], '\0'}, 20, 1.0f).x;
-            if (b->text[i] == '\n' || x_at + w > 685) { linha_at++; x_at = 0; if (b->text[i] == '\n') continue; }
-            x_at += w + 1.0f;
+            if (b->text[i] == '\n' || cur_x + w > 685) { cur_line++; cur_x = 0; if (b->text[i] == '\n') continue; }
+            cur_x += w + 1.0f;
         }
-
-        int target = linha_at + dir;
+        int target = cur_line + dir;
         if (target >= 0) {
-            int melhor_i = b->cursor_index; float menor_d = 9999.0f;
-            int l_scan = 0; float x_scan = 0;
+            int best_i = b->cursor_index; float min_d = 9999.0f;
+            int scan_line = 0; float scan_x = 0;
             for (int i = 0; i <= (int)strlen(b->text); i++) {
-                if (l_scan == target) {
-                    float d = (x_at > x_scan) ? (x_at - x_scan) : (x_scan - x_at);
-                    if (d < menor_d) { menor_d = d; melhor_i = i; }
+                if (scan_line == target) {
+                    float d = (cur_x > scan_x) ? (cur_x - scan_x) : (scan_x - cur_x);
+                    if (d < min_d) { min_d = d; best_i = i; }
                 }
                 if (b->text[i] == '\0') break;
                 float w = MeasureTextEx(GetFontDefault(), (char[2]){b->text[i], '\0'}, 20, 1.0f).x;
-                if (b->text[i] == '\n' || x_scan + w > 685) { l_scan++; x_scan = 0; if (b->text[i] == '\n') continue; }
-                x_scan += w + 1.0f;
+                if (b->text[i] == '\n' || scan_x + w > 685) { scan_line++; scan_x = 0; if (b->text[i] == '\n') continue; }
+                scan_x += w + 1.0f;
             }
-            b->cursor_index = melhor_i;
+            b->cursor_index = best_i;
         }
     }
 }
 
-// --- SISTEMA PRINCIPAL ---
-
+// main system
 int main() {
-    InitWindow(800, 600, "texto editor em C");
+    InitWindow(800, 600, "text editor in c");
     SetTargetFPS(60);
 
     Document *my_doc = create_document();
-    add_block(my_doc, "Clique aqui para editar...");
+    add_block(my_doc, "click here to edit...");
     Block *block_focus = NULL;
 
     while (!WindowShouldClose()) {
-        
-        // Lógica de Documento
         if (block_focus != NULL) {
-            atualizar_texto_digitado(block_focus);
+            update_typing(block_focus);
 
             if (IsKeyPressed(KEY_ENTER) && !IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT)) {
                 add_block(my_doc, ""); 
@@ -182,7 +174,7 @@ int main() {
             }
         }
 
-        // --- RENDERIZAÇÃO (PARTE GRÁFICA) ---
+        // drawing
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
@@ -191,7 +183,7 @@ int main() {
         int fontSize = 20, lineHeight = 24, maxWidth = 680; 
 
         while (current != NULL) {
-            // 1. Cálculo de Layout (Altura da Box)
+            // layout
             int vis_lines = 1; float x_c = 0;
             for (int i = 0; current->text[i] != '\0'; i++) {
                 float w = MeasureTextEx(GetFontDefault(), (char[2]){current->text[i], '\0'}, (float)fontSize, 1.0f).x;
@@ -201,41 +193,25 @@ int main() {
 
             int b_height = (vis_lines * lineHeight) + 20;
             Rectangle b_area = {50, (float)y, 700, (float)b_height};
-
-            // 2. HITBOX E HOVER
             bool mouse_above = CheckCollisionPointRec(GetMousePosition(), b_area);
 
-            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && mouse_above) {
-                block_focus = current;
-            }
+            // hover
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && mouse_above) block_focus = current;
+            if (mouse_above) DrawRectangleRec(b_area, (Color){ 235, 235, 235, 255 }); 
 
-            // 3. DESENHO DO FUNDO (SÓ NO HOVER)
-            if (mouse_above) {
-                DrawRectangleRec(b_area, (Color){ 235, 235, 235, 255 }); 
-            }
-
-            if (current == block_focus && !mouse_above) {
-            }
-
-            // 4. Desenho do Texto e Cursor
+            // text and cursor
             int c_line = 0; float x_off = 0;
             Vector2 cur_pos = { 60, (float)y + 10 };
             
             for (int i = 0; current->text[i] != '\0'; i++) {
-                if (i == current->cursor_index) {
-                    cur_pos = (Vector2){ (float)((int)(60 + x_off)), (float)((int)(y + 10 + (c_line * lineHeight))) };
-                }
-
+                if (i == current->cursor_index) cur_pos = (Vector2){ (float)((int)(60 + x_off)), (float)((int)(y + 10 + (c_line * lineHeight))) };
                 char c = current->text[i];
                 float w = MeasureTextEx(GetFontDefault(), (char[2]){c, '\0'}, (float)fontSize, 1.0f).x;
 
                 if (c == '\n' || x_off + w > maxWidth) {
-                    c_line++;
-                    x_off = 0;
+                    c_line++; x_off = 0;
                     if (c == '\n') {
-                        if (i + 1 == current->cursor_index) {
-                            cur_pos = (Vector2){ 60, (float)((int)(y + 10 + (c_line * lineHeight))) };
-                        }
+                        if (i + 1 == current->cursor_index) cur_pos = (Vector2){ 60, (float)((int)(y + 10 + (c_line * lineHeight))) };
                         continue; 
                     }
                 }
@@ -244,12 +220,10 @@ int main() {
                 DrawTextEx(GetFontDefault(), (char[2]){c, '\0'}, pos, (float)fontSize, 1.0f, BLACK);
                 x_off += w + 1.0f;
 
-                if (i + 1 == current->cursor_index) {
-                    cur_pos = (Vector2){ (float)((int)(60 + x_off)), (float)((int)(y + 10 + (c_line * lineHeight))) };
-                }
+                if (i + 1 == current->cursor_index) cur_pos = (Vector2){ (float)((int)(60 + x_off)), (float)((int)(y + 10 + (c_line * lineHeight))) };
             }
 
-            // 5. Cursor Piscante
+            // blink cursor
             if (current == block_focus && (int)(GetTime() * 2) % 2 == 0) {
                 DrawRectangle((int)cur_pos.x, (int)cur_pos.y, 2, fontSize, BLACK);
             }
@@ -259,7 +233,6 @@ int main() {
         }
         EndDrawing();
     }
-
     free_document(my_doc);
     CloseWindow();
     return 0;
