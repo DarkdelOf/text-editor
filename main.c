@@ -48,6 +48,34 @@ void add_block(Document *doc, char *text) {
     }
 }
 
+void delete_block(Document *doc, Block *target) {
+    if (doc == NULL || target == NULL) return;
+
+    if (target == doc->start) {
+        doc->start = target->next;
+        if (doc->start == NULL) {
+            doc->end = NULL;
+        }
+    } 
+
+    else {
+        Block *prev = doc->start;
+        while (prev != NULL && prev->next != target) {
+            prev = prev->next;
+        }
+
+        if (prev != NULL) {
+            prev->next = target->next;
+            if (target == doc->end) {
+                doc->end = prev;
+            }
+        }
+    }
+
+    free(target->text);
+    free(target);
+}
+
 void free_document(Document *doc) {
     Block *current = doc->start;
     while (current != NULL) {
@@ -60,7 +88,7 @@ void free_document(Document *doc) {
 }
 
 // typing logic
-void update_typing(Block *b) {
+Block* update_typing(Document *doc, Block *b){
     double now = GetTime();
     int maxWidth = 680;
 
@@ -109,11 +137,32 @@ void update_typing(Block *b) {
     if (IsKeyPressed(KEY_DELETE)) { do_del = true; next_del_time = now + 0.5; }
     else if (IsKeyDown(KEY_DELETE) && now > next_del_time) { do_del = true; next_del_time = now + 0.05; }
 
-    if (do_back && b->cursor_index > 0) {
-        int len = strlen(b->text);
-        memmove(&b->text[b->cursor_index - 1], &b->text[b->cursor_index], len - b->cursor_index + 1);
-        b->cursor_index--;
+    if (do_back) {
+        if (b->cursor_index > 0) {
+            int len = strlen(b->text);
+            memmove(&b->text[b->cursor_index - 1], &b->text[b->cursor_index], len - b->cursor_index + 1);
+            b->cursor_index--;
+        } 
+        else if (b->cursor_index == 0 && b != doc->start) {
+            Block *prev = doc->start;
+            while (prev->next != b) {
+                prev = prev->next;
+            }
+
+            int prev_len = strlen(prev->text);
+            int curr_len = strlen(b->text);
+            
+            prev->text = (char*) realloc(prev->text, prev_len + curr_len + 1);
+            
+            strcat(prev->text, b->text);
+
+            delete_block(doc, b);
+
+            prev->cursor_index = prev_len;
+            return prev; 
+        }
     }
+
     if (do_del && b->cursor_index < (int)strlen(b->text)) {
         int len = strlen(b->text);
         memmove(&b->text[b->cursor_index], &b->text[b->cursor_index + 1], len - b->cursor_index);
@@ -153,6 +202,7 @@ void update_typing(Block *b) {
             b->cursor_index = best_index;
         }
     }
+    return b;
 }
 
 // main system
@@ -166,7 +216,7 @@ int main() {
 
     while (!WindowShouldClose()) {
         if (block_focus != NULL) {
-            update_typing(block_focus);
+            block_focus = update_typing(my_doc, block_focus);
             if (IsKeyPressed(KEY_ENTER) && !IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT)) {
                 add_block(my_doc, ""); 
                 block_focus = my_doc->end;
